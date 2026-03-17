@@ -2,7 +2,6 @@
 Elasticsearch client for rule deployment and unit test execution.
 """
 import logging
-import asyncio
 from typing import Optional
 from app.config import settings
 
@@ -71,8 +70,8 @@ class ELKClient:
         try:
             # Try Kibana Detection Engine API (ELK 7.9+)
             import httpx
-            scheme = "https" if self.use_ssl else "http"
-            kibana_url = f"{scheme}://{self.host}:5601"
+            from app.config import settings
+            kibana_url = (settings.kibana_url or f"http://{self.host}:5601").rstrip("/")
 
             headers = {"Content-Type": "application/json", "kbn-xsrf": "true"}
             if self.api_key:

@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     elk_password: Optional[str] = None
     elk_use_ssl: bool = False
     elk_index_prefix: str = "detectioncore"
+    kibana_url: Optional[str] = None  # e.g. http://localhost:5601 — defaults to http://{elk_host}:5601
 
     # AI Providers
     gemini_api_key: Optional[str] = None
