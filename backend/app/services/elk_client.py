@@ -82,6 +82,14 @@ class ELKClient:
                 headers["Authorization"] = f"Basic {creds}"
 
             async with httpx.AsyncClient(verify=False, timeout=30) as http:
+                # Ensure detection engine index is initialized
+                init_r = await http.post(
+                    f"{kibana_url}/api/detection_engine/index",
+                    headers=headers,
+                )
+                if init_r.status_code not in (200, 201):
+                    logger.warning(f"Kibana detection engine init: {init_r.status_code} {init_r.text[:200]}")
+
                 r = await http.post(
                     f"{kibana_url}/api/detection_engine/rules",
                     json=rule_json,
@@ -94,6 +102,7 @@ class ELKClient:
                         "rule_id_elk": resp_data.get("id"),
                         "method": "kibana_detection_engine",
                     }
+                logger.error(f"Kibana detection engine API returned {r.status_code}: {r.text[:500]}")
 
             # Fallback: store as Elasticsearch document
             doc = {**rule_json, "detectioncore_rule_id": rule_id, "type": "detection_rule"}
