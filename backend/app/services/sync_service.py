@@ -94,6 +94,31 @@ def _extract_metadata(raw: dict) -> dict:
     return raw.get("metadata") or {}
 
 
+def _parse_sigma_yaml(sigma_content: str) -> dict:
+    """Parse Sigma YAML content, returning empty dict on failure."""
+    try:
+        import yaml
+        return yaml.safe_load(sigma_content) or {}
+    except Exception:
+        return {}
+
+
+def _extract_title_from_sigma(sigma_content: str) -> str | None:
+    """Parse the title field directly from Sigma YAML content."""
+    return _parse_sigma_yaml(sigma_content).get("title") or None
+
+
+def _extract_tags_from_sigma(sigma_content: str) -> list[str]:
+    """Parse tags list directly from Sigma YAML content."""
+    tags = _parse_sigma_yaml(sigma_content).get("tags") or []
+    return [str(t) for t in tags] if isinstance(tags, list) else []
+
+
+def _extract_logsource_from_sigma(sigma_content: str) -> dict:
+    """Parse logsource block directly from Sigma YAML content."""
+    return _parse_sigma_yaml(sigma_content).get("logsource") or {}
+
+
 def _extract_log_source(raw: dict) -> dict:
     """
     log_sources is a LIST of {category, product, service} objects.
@@ -114,11 +139,12 @@ async def _upsert_rule(raw: dict, job: SyncJob):
 
     meta = _extract_metadata(raw)
     sigma_content = raw.get("content") or ""
-    title = meta.get("title") or "Untitled Rule"
-    description = meta.get("description")
-    severity = _map_severity(meta.get("level") or "medium")
-    tags = meta.get("tags") or []
-    log_src = _extract_log_source(raw)
+    sigma_parsed = _parse_sigma_yaml(sigma_content)
+    title = meta.get("title") or sigma_parsed.get("title") or "Untitled Rule"
+    description = meta.get("description") or sigma_parsed.get("description")
+    severity = _map_severity(meta.get("level") or sigma_parsed.get("level") or "medium")
+    tags = meta.get("tags") or sigma_parsed.get("tags") or []
+    log_src = _extract_log_source(raw) or sigma_parsed.get("logsource") or {}
 
     existing = await DetectionRule.find_one(
         DetectionRule.sigma_rule_id == str(sigma_rule_id)

@@ -173,6 +173,48 @@ async def reprocess_rule(
     return ApiResponse.ok(data=_rule_summary(rule), message="Reprocessing started")
 
 
+@router.post("/backfill-titles", response_model=ApiResponse[dict])
+async def backfill_titles(admin: AdminUser = Depends(get_current_admin)):
+    """Fix rules missing title, MITRE, and log source by parsing from Sigma YAML content."""
+    from app.services.sync_service import _parse_sigma_yaml, _extract_mitre, _extract_tactic
+    fixed = 0
+    async for rule in DetectionRule.find_all():
+        changed = False
+        sigma = _parse_sigma_yaml(rule.sigma_content or "")
+        if not sigma:
+            continue
+
+        if rule.title == "Untitled Rule" and sigma.get("title"):
+            rule.title = sigma["title"]
+            changed = True
+
+        if not rule.mitre_technique_ids:
+            tags = sigma.get("tags") or []
+            mitre_ids = _extract_mitre(tags)
+            if mitre_ids:
+                rule.mitre_technique_ids = mitre_ids
+                rule.tags = tags
+                rule.mitre_tactic = _extract_tactic(tags)
+                changed = True
+
+        logsource = sigma.get("logsource") or {}
+        if not rule.log_source_category and logsource.get("category"):
+            rule.log_source_category = logsource.get("category")
+            changed = True
+        if not rule.log_source_product and logsource.get("product"):
+            rule.log_source_product = logsource.get("product")
+            changed = True
+        if not rule.log_source_service and logsource.get("service"):
+            rule.log_source_service = logsource.get("service")
+            changed = True
+
+        if changed:
+            await rule.save()
+            fixed += 1
+
+    return ApiResponse.ok(data={"fixed": fixed}, message=f"Fixed {fixed} rules")
+
+
 def _rule_summary(rule: DetectionRule) -> RuleSummaryOut:
     return RuleSummaryOut(
         id=str(rule.id),
