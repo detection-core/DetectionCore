@@ -150,7 +150,7 @@ async def deploy_to_elk(
 
     from app.services.elk_client import ELKClient
     client = ELKClient()
-    result = await client.deploy_rule(rule.elk_rule_json, str(rule.id))
+    result = await client.deploy_rule(rule.elk_rule_json)
 
     rule.elk_deployment.deployed = result.get("deployed", False)
     if result.get("rule_id_elk"):

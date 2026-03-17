@@ -61,7 +61,7 @@ class ELKClient:
         finally:
             await client.close()
 
-    async def deploy_rule(self, rule_json: dict, rule_id: str) -> dict:
+    async def deploy_rule(self, rule_json: dict) -> dict:
         """
         Deploy a detection rule to Elasticsearch as a SIEM detection alert.
         Uses the Kibana Detection Engine API if available, otherwise stores as a watcher.
@@ -81,6 +81,19 @@ class ELKClient:
                 creds = base64.b64encode(f"{self.username}:{self.password}".encode()).decode()
                 headers["Authorization"] = f"Basic {creds}"
 
+            # Normalize rule_json to satisfy Kibana validation
+            payload = dict(rule_json)
+            author = payload.get("author", "DetectionCore")
+            payload["author"] = author if isinstance(author, list) else [author]
+            fixed_threat = []
+            for entry in payload.get("threat", []):
+                if "tactic" not in entry:
+                    techniques = entry.get("technique", [])
+                    tid = techniques[0]["id"] if techniques else "T0000"
+                    entry = {**entry, "tactic": {"id": "unknown", "name": "Unknown", "reference": f"https://attack.mitre.org/techniques/{tid}/"}}
+                fixed_threat.append(entry)
+            payload["threat"] = fixed_threat
+
             async with httpx.AsyncClient(verify=False, timeout=30) as http:
                 # Ensure detection engine index is initialized
                 init_r = await http.post(
@@ -92,7 +105,7 @@ class ELKClient:
 
                 r = await http.post(
                     f"{kibana_url}/api/detection_engine/rules",
-                    json=rule_json,
+                    json=payload,
                     headers=headers,
                 )
                 if r.status_code in (200, 201):
@@ -104,17 +117,10 @@ class ELKClient:
                     }
                 logger.error(f"Kibana detection engine API returned {r.status_code}: {r.text[:500]}")
 
-            # Fallback: store as Elasticsearch document
-            doc = {**rule_json, "detectioncore_rule_id": rule_id, "type": "detection_rule"}
-            resp = await client.index(
-                index=f"{settings.elk_index_prefix}-rules",
-                id=rule_id,
-                document=doc,
-            )
+            # Fallback: Kibana unavailable — do not report as deployed
             return {
-                "deployed": True,
-                "rule_id_elk": resp["_id"],
-                "method": "elasticsearch_index",
+                "deployed": False,
+                "error": "Kibana Detection Engine API rejected the rule — check server logs for details",
             }
         except Exception as e:
             logger.error(f"Rule deployment failed: {e}")

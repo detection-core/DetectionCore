@@ -92,7 +92,7 @@ def _build_elk_alert_rule(parsed: dict, elk_query: str) -> dict:
         "tags": tags,
         "threat": threat_entries,
         "references": parsed.get("references", []) or [],
-        "author": parsed.get("author", ["DetectionCore"]),
+        "author": _ensure_list(parsed.get("author", "DetectionCore")),
         "license": "DRL",
         "rule_id": f"dc-{__import__('uuid').uuid4().hex[:8]}",
         "version": 1,
@@ -138,6 +138,12 @@ def _severity_to_risk_score(severity: str) -> int:
     return {"critical": 99, "high": 73, "medium": 47, "low": 21}.get(severity, 47)
 
 
+def _ensure_list(value) -> list:
+    if isinstance(value, list):
+        return value
+    return [value] if value else ["DetectionCore"]
+
+
 def _build_threat_entries(tags: list[str]) -> list[dict]:
     """Build ECS threat entries from SIGMA ATT&CK tags."""
     technique_ids = [
@@ -145,12 +151,25 @@ def _build_threat_entries(tags: list[str]) -> list[dict]:
         for t in tags
         if t.lower().startswith("attack.t")
     ]
+    tactic_tags = [
+        t.replace("attack.", "").replace("_", " ").title()
+        for t in tags
+        if t.lower().startswith("attack.") and not t.lower().replace("attack.", "").startswith("t")
+    ]
+    tactic_name = tactic_tags[0] if tactic_tags else "Defense Evasion"
+    tactic_id = tactic_name.lower().replace(" ", "-")
+
     if not technique_ids:
         return []
     return [
         {
             "framework": "MITRE ATT&CK",
-            "technique": [{"id": tid, "name": tid, "reference": f"https://attack.mitre.org/techniques/{tid}"}],
+            "tactic": {
+                "id": tactic_id,
+                "name": tactic_name,
+                "reference": f"https://attack.mitre.org/tactics/{tactic_id}/",
+            },
+            "technique": [{"id": tid, "name": tid, "reference": f"https://attack.mitre.org/techniques/{tid}/"}],
         }
         for tid in technique_ids
     ]
