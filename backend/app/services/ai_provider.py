@@ -1,5 +1,5 @@
 """
-Unified AI provider interface supporting Gemini and OpenRouter.
+Unified AI provider interface supporting Gemini, OpenRouter, and Anthropic.
 """
 import logging
 from typing import Optional
@@ -27,6 +27,8 @@ class AIProvider:
             return await self._gemini_complete(prompt, system)
         elif self.provider == "openrouter":
             return await self._openrouter_complete(prompt, system)
+        elif self.provider == "anthropic":
+            return await self._anthropic_complete(prompt, system)
         else:
             raise ValueError(f"Unknown AI provider: {self.provider}")
 
@@ -61,3 +63,18 @@ class AIProvider:
             messages=messages,
         )
         return response.choices[0].message.content.strip()
+
+    async def _anthropic_complete(self, prompt: str, system: Optional[str]) -> str:
+        import anthropic
+
+        key = self.api_key or settings.anthropic_api_key
+        if not key:
+            raise ValueError("Anthropic API key not configured")
+
+        client = anthropic.AsyncAnthropic(api_key=key)
+        kwargs = {"model": self.model, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]}
+        if system:
+            kwargs["system"] = system
+
+        response = await client.messages.create(**kwargs)
+        return response.content[0].text.strip()

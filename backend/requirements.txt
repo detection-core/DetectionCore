@@ -16,8 +16,9 @@ pySigma-backend-elasticsearch==2.0.2
 pyyaml==6.0.3
 
 # AI providers
-google-generativeai==0.8.3
+google-generativeai>=0.8.3
 openai==1.57.4
+anthropic>=0.84.0
 
 # Elasticsearch
 elasticsearch[async]==8.16.0

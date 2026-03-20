@@ -46,7 +46,8 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    default_ai_provider: str = "gemini"  # gemini | openrouter
+    anthropic_api_key: Optional[str] = None
+    default_ai_provider: str = "gemini"  # gemini | openrouter | anthropic
     default_ai_model: str = "gemini-2.0-flash"
 
     # Sync schedule (cron expression)

@@ -13,15 +13,27 @@ export default function RuleDetail() {
   const [activeTab, setActiveTab] = useState<"sigma" | "elk" | "tests" | "score">("sigma");
   const [testResults, setTestResults] = useState<Record<string, { passed: boolean; hits: number; error?: string }>>({});
 
+  const [isPolling, setIsPolling] = useState(false);
+
   const { data: rule, isLoading } = useQuery({
     queryKey: ["rule", id],
     queryFn: () => getRule(id!).then((r) => r.data.data),
     enabled: !!id,
+    refetchInterval: (query) => {
+      const status = query.state.data?.pipeline_status;
+      const inProgress = status === "queued" || status === "converted" || status === "enhanced" || status === "tested";
+      if (isPolling || inProgress) return 2000;
+      if (isPolling) setIsPolling(false);
+      return false;
+    },
   });
 
   const reprocessMut = useMutation({
     mutationFn: () => reprocessRule(id!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["rule", id] }),
+    onSuccess: () => {
+      setIsPolling(true);
+      qc.invalidateQueries({ queryKey: ["rule", id] });
+    },
   });
 
   const runTestMut = useMutation({
@@ -78,11 +90,11 @@ export default function RuleDetail() {
           </div>
           <button
             onClick={() => reprocessMut.mutate()}
-            disabled={reprocessMut.isPending}
-            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors"
+            disabled={reprocessMut.isPending || isPolling}
+            className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg bg-secondary hover:bg-secondary/80 text-foreground transition-colors disabled:opacity-60"
           >
-            <RefreshCw className={`w-4 h-4 ${reprocessMut.isPending ? "animate-spin" : ""}`} />
-            Reprocess
+            <RefreshCw className={`w-4 h-4 ${(reprocessMut.isPending || isPolling) ? "animate-spin" : ""}`} />
+            {isPolling ? "Processing..." : "Reprocess"}
           </button>
         </div>
       </div>

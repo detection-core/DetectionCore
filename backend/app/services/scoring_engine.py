@@ -79,20 +79,17 @@ async def _score_log_availability(rule: DetectionRule) -> float:
     if not rule.log_source_category and not rule.log_source_product:
         return 50.0  # Unknown — neutral score
 
-    query = {}
+    filters = []
     if rule.log_source_category:
-        query["category"] = rule.log_source_category
+        filters.append(LogSource.category == rule.log_source_category)
     if rule.log_source_product:
-        query["product"] = rule.log_source_product
+        filters.append(LogSource.product == rule.log_source_product)
 
-    log_source = await LogSource.find_one(LogSource.is_available == True, **{
-        k: v for k, v in query.items()
-    })
-
+    log_source = await LogSource.find_one(LogSource.is_available == True, *filters)
     if log_source:
         return 100.0
     # Check if it exists but is marked unavailable
-    any_source = await LogSource.find_one(**{k: v for k, v in query.items()})
+    any_source = await LogSource.find_one(*filters)
     return 0.0 if any_source else 50.0
 
 
