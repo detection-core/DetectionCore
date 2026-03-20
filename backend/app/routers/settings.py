@@ -20,7 +20,7 @@ async def get_settings(admin: AdminUser = Depends(get_current_admin)):
         "app_name": settings.app_name,
         "app_version": settings.app_version,
         "detectionhub_base_url": config.detectionhub_base_url if config else settings.detectionhub_base_url,
-        "detectionhub_connected": bool(config.detectionhub_api_key if config else settings.detectionhub_api_key),
+        "detectionhub_connected": bool(settings.detectionhub_email and settings.detectionhub_password),
         "elk_host": config.elk_host if config else settings.elk_host,
         "elk_port": config.elk_port if config else settings.elk_port,
         "elk_use_ssl": config.elk_use_ssl if config else settings.elk_use_ssl,

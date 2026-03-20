@@ -30,7 +30,8 @@ class Settings(BaseSettings):
 
     # DetectionHub
     detectionhub_base_url: str = "https://detectionhub.ai"
-    detectionhub_api_key: Optional[str] = None
+    detectionhub_email: Optional[str] = None
+    detectionhub_password: Optional[str] = None
 
     # ELK
     elk_host: str = "localhost"

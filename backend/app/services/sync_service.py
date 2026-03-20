@@ -23,15 +23,11 @@ def _map_severity(raw: str) -> Severity:
 
 
 async def _get_client() -> DetectionHubClient:
-    """
-    Build DetectionHubClient preferring the API key stored in ScoringConfig (set via
-    the Settings UI) and falling back to the .env value.
-    """
+    """Build DetectionHubClient using credentials from .env."""
     from app.models.scoring_config import ScoringConfig
     config = await ScoringConfig.find_one()
-    api_key = (config.detectionhub_api_key if config else None) or None
     base_url = (config.detectionhub_base_url if config else None) or None
-    return DetectionHubClient(base_url=base_url, api_key=api_key)
+    return DetectionHubClient(base_url=base_url)
 
 
 async def run_sync(job_id: str, today_only: bool = True):

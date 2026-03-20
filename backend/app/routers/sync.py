@@ -76,7 +76,7 @@ async def sync_status(admin: AdminUser = Depends(get_current_admin)):
     return ApiResponse.ok(data={
         "sync_enabled": config.sync_enabled if config else settings.sync_enabled,
         "sync_cron": config.sync_cron if config else settings.sync_cron,
-        "detectionhub_configured": bool(config.detectionhub_api_key if config else settings.detectionhub_api_key),
+        "detectionhub_configured": bool(settings.detectionhub_email and settings.detectionhub_password),
         "last_sync": last_job.started_at if last_job else None,
         "last_status": last_job.status if last_job else None,
     })
