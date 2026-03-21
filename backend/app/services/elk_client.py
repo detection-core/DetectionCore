@@ -150,20 +150,68 @@ class ELKClient:
             await client.close()
 
     async def list_indices(self) -> list[dict]:
-        """List available ELK indices with document counts."""
+        """List data streams and regular indices with document counts.
+
+        Data streams are preferred — each groups all its backing indices
+        (e.g. .ds-winlogbeat-9.3.1-2026.03.20-000001) under one logical name.
+        Regular indices that are NOT backing a data stream are included separately.
+        Hidden/system indices (starting with '.') are excluded.
+        """
         client = self._get_client()
         try:
-            resp = await client.cat.indices(format="json", h="index,docs.count,store.size,health")
-            return [
-                {
-                    "index": i.get("index"),
+            results = []
+            backing_index_names = set()
+
+            # 1. Fetch data streams
+            try:
+                ds_resp = await client.indices.get_data_stream(name="*")
+                for ds in ds_resp.get("data_streams", []):
+                    name = ds.get("name", "")
+                    indices = ds.get("indices", [])
+                    # Track backing index names so we can exclude them below
+                    for idx in indices:
+                        backing_index_names.add(idx.get("index_name", ""))
+                    # Get doc count from the write index via cat
+                    write_index = indices[-1].get("index_name", "") if indices else ""
+                    doc_count = 0
+                    size = None
+                    if write_index:
+                        try:
+                            cat = await client.cat.indices(
+                                index=write_index, format="json", h="docs.count,store.size"
+                            )
+                            if cat:
+                                doc_count = int(cat[0].get("docs.count", 0) or 0)
+                                size = cat[0].get("store.size")
+                        except Exception:
+                            pass
+                    results.append({
+                        "index": name,
+                        "type": "data_stream",
+                        "docs_count": doc_count,
+                        "size": size,
+                        "health": ds.get("status", "unknown").lower(),
+                        "backing_indices": len(indices),
+                    })
+            except Exception as e:
+                logger.warning(f"Could not fetch data streams: {e}")
+
+            # 2. Fetch regular indices, skip system and backing indices
+            cat_resp = await client.cat.indices(format="json", h="index,docs.count,store.size,health")
+            for i in cat_resp:
+                name = str(i.get("index", ""))
+                if name.startswith(".") or name in backing_index_names:
+                    continue
+                results.append({
+                    "index": name,
+                    "type": "index",
                     "docs_count": int(i.get("docs.count", 0) or 0),
                     "size": i.get("store.size"),
                     "health": i.get("health"),
-                }
-                for i in resp
-                if not str(i.get("index", "")).startswith(".")
-            ]
+                    "backing_indices": None,
+                })
+
+            return sorted(results, key=lambda x: x["index"])
         except Exception as e:
             logger.error(f"Failed to list indices: {e}")
             return []

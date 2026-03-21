@@ -66,7 +66,8 @@ export default function ElkPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Index</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Index / Data Stream</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Type</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Documents</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Size</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-muted-foreground uppercase">Health</th>
@@ -74,10 +75,21 @@ export default function ElkPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {indicesLoading ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading indices...</td></tr>
-              ) : (indices ?? []).map((idx: { index: string; docs_count: number; size?: string; health: string }) => (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading indices...</td></tr>
+              ) : (indices ?? []).map((idx: { index: string; type: string; docs_count: number; size?: string; health: string; backing_indices?: number }) => (
                 <tr key={idx.index} className="hover:bg-secondary/30 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-foreground">{idx.index}</td>
+                  <td className="px-4 py-3">
+                    {idx.type === "data_stream" ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                        data stream {idx.backing_indices != null ? `(${idx.backing_indices})` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-muted-foreground border border-border">
+                        index
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{idx.docs_count.toLocaleString()}</td>
                   <td className="px-4 py-3 text-muted-foreground">{idx.size ?? "—"}</td>
                   <td className="px-4 py-3">
