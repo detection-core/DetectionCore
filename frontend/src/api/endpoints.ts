@@ -59,3 +59,18 @@ export const recalculateScores = () => api.post("/scoring/recalculate-all");
 
 // Settings
 export const getSettings = () => api.get("/settings");
+
+// SIEM Integrations
+export const getSiemIntegrations = () => api.get("/settings/siem-integrations");
+export const getSiemIntegration = (id: string) => api.get(`/settings/siem-integrations/${id}`);
+export const updateSiemIntegration = (id: string, data: Record<string, unknown>) =>
+  api.put(`/settings/siem-integrations/${id}`, data);
+export const createSiemIntegration = (data: Record<string, unknown>) =>
+  api.post("/settings/siem-integrations", data);
+
+// Reconvert
+export const reconvertAllRules = () => api.post("/rules/reconvert-all");
+export const getReconvertStatus = () => api.get("/rules/reconvert-status");
+
+// ELK Field Discovery
+export const getElkFields = (index: string) => api.get("/elk/fields", { params: { index } });

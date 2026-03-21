@@ -16,6 +16,7 @@ async def init_db():
     from app.models.sync_job import SyncJob
     from app.models.scoring_config import ScoringConfig
     from app.models.admin_user import AdminUser
+    from app.models.siem_integration import SIEMIntegration
 
     client = AsyncIOMotorClient(settings.mongodb_uri)
     await init_beanie(
@@ -27,6 +28,7 @@ async def init_db():
             SyncJob,
             ScoringConfig,
             AdminUser,
+            SIEMIntegration,
         ],
     )
     logger.info(f"Connected to MongoDB: {settings.mongodb_db}")
@@ -37,6 +39,7 @@ async def _seed_defaults():
     from app.models.admin_user import AdminUser
     from app.core.security import hash_password
     from app.models.scoring_config import ScoringConfig
+    from app.models.siem_integration import SIEMIntegration
 
     # Seed admin user
     existing = await AdminUser.find_one(AdminUser.username == settings.admin_username)
@@ -61,6 +64,20 @@ async def _seed_defaults():
             config.detectionhub_base_url = "https://detectionhub.ai"
             await config.save()
             logger.info("Migrated detectionhub_base_url to https://detectionhub.ai")
+
+    # Seed default SIEM integration
+    default_siem = await SIEMIntegration.find_one(SIEMIntegration.is_default == True)
+    if not default_siem:
+        siem = SIEMIntegration(
+            name="Default ELK",
+            siem_type="elasticsearch",
+            is_default=True,
+            base_pipeline="ecs_windows",
+            custom_field_mappings={},
+            logsource_field_overrides={},
+        )
+        await siem.insert()
+        logger.info("Seeded default SIEM integration (ELK, ecs_windows)")
 
 
 async def close_db():

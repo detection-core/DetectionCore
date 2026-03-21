@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     await init_db()
+    app.state.reconvert_job = {
+        "status": "idle",
+        "total": 0,
+        "done": 0,
+        "errors": 0,
+        "started_at": None,
+        "finished_at": None,
+    }
     _start_scheduler()
     yield
     await close_db()

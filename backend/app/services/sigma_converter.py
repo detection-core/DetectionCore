@@ -21,19 +21,112 @@ class SigmaConversionResult:
         self.success = error is None and elk_query is not None
 
 
-def convert_sigma_to_elk(sigma_yaml: str) -> SigmaConversionResult:
+def _build_processing_pipeline(siem_config: dict | None):
+    """Build a pySigma ProcessingPipeline from a SIEMIntegration config dict."""
+    if siem_config is None:
+        return None
+
+    from sigma.processing.pipeline import ProcessingPipeline, ProcessingItem
+    from sigma.processing.transformations import FieldMappingTransformation
+    from sigma.processing.conditions import LogsourceCondition
+
+    base_pipeline_name = siem_config.get("base_pipeline", "none")
+    custom_field_mappings = siem_config.get("custom_field_mappings") or {}
+    logsource_field_overrides = siem_config.get("logsource_field_overrides") or {}
+
+    pipeline = None
+
+    if base_pipeline_name == "ecs_windows":
+        try:
+            from sigma.pipelines.elasticsearch.windows import ecs_windows
+            pipeline = ecs_windows()
+        except ImportError:
+            logger.warning("ecs_windows pipeline unavailable (pySigma-backend-elasticsearch missing), falling back to no base pipeline")
+    elif base_pipeline_name == "ecs_linux":
+        logger.info("ecs_linux pipeline not yet installed, using no base pipeline")
+    elif base_pipeline_name == "custom_only":
+        pipeline = ProcessingPipeline()
+    # "none" or unknown → pipeline stays None
+
+    # Chain global custom field mappings
+    if custom_field_mappings:
+        custom_pipeline = ProcessingPipeline(items=[
+            ProcessingItem(
+                identifier="custom_global_mappings",
+                transformation=FieldMappingTransformation(custom_field_mappings),
+            )
+        ])
+        pipeline = (pipeline + custom_pipeline) if pipeline is not None else custom_pipeline
+
+    # Chain per-logsource overrides (highest priority — applied last)
+    if logsource_field_overrides:
+        logsource_items = []
+        for key, mappings in logsource_field_overrides.items():
+            if not mappings or "/" not in key:
+                continue
+            product, category = key.split("/", 1)
+            logsource_items.append(ProcessingItem(
+                identifier=f"logsource_override_{product}_{category}",
+                transformation=FieldMappingTransformation(mappings),
+                rule_conditions=[LogsourceCondition(product=product, category=category)],
+            ))
+        if logsource_items:
+            logsource_pipeline = ProcessingPipeline(items=logsource_items)
+            pipeline = (pipeline + logsource_pipeline) if pipeline is not None else logsource_pipeline
+
+    return pipeline
+
+
+def _strip_markdown_fences(text: str) -> str:
+    """
+    Extract raw YAML from markdown-wrapped or markdown-contaminated Sigma content.
+
+    DetectionHub content falls into three patterns:
+    1. Fully wrapped in ```yaml ... ``` fences — extract the inner block.
+    2. Valid YAML followed by embedded code examples or RST separators (``` or =====
+       at column 0) — truncate before those markers.
+    3. No markdown — return unchanged.
+
+    Backticks and multi-equals runs at column 0 are never valid inside Sigma YAML,
+    so truncating there is always safe.
+    """
+    import re
+
+    # Case 1: Content fully wrapped in a code fence
+    match = re.search(r"^```(?:yaml|sigma)?\s*\n(.*?)^```", text, re.MULTILINE | re.DOTALL)
+    if match:
+        return match.group(1)
+
+    # Case 2: Embedded markers — truncate before the first bad line
+    lines = text.split('\n')
+    clean_lines = []
+    for line in lines:
+        if line.startswith('```') or re.match(r'^={3,}\s*$', line):
+            break
+        clean_lines.append(line)
+    cleaned = '\n'.join(clean_lines).rstrip()
+    if cleaned != text.rstrip():
+        return cleaned
+
+    return text
+
+
+def convert_sigma_to_elk(sigma_yaml: str, siem_config: dict | None = None) -> SigmaConversionResult:
     """
     Convert a SIGMA rule YAML string to ELK query + full alert rule JSON.
     Uses pySigma with the Elasticsearch backend.
     """
+    sigma_yaml = _strip_markdown_fences(sigma_yaml)
     try:
         from sigma.collection import SigmaCollection
         from sigma.backends.elasticsearch import LuceneBackend
         from sigma.processing.resolver import ProcessingPipelineResolver
 
+        pipeline = _build_processing_pipeline(siem_config)
+
         # Parse and convert
         rules = SigmaCollection.from_yaml(sigma_yaml)
-        backend = LuceneBackend()
+        backend = LuceneBackend(processing_pipeline=pipeline)
         queries = backend.convert(rules)
 
         if not queries:
@@ -42,7 +135,11 @@ def convert_sigma_to_elk(sigma_yaml: str) -> SigmaConversionResult:
         elk_query = queries[0] if isinstance(queries[0], str) else str(queries[0])
 
         # Parse SIGMA YAML to extract metadata for ELK rule JSON
+        # yaml.safe_load may return a string if the document starts with prose text;
+        # fall back to an empty dict so _build_elk_alert_rule doesn't blow up.
         parsed = yaml.safe_load(sigma_yaml)
+        if not isinstance(parsed, dict):
+            parsed = {}
         elk_rule_json = _build_elk_alert_rule(parsed, elk_query)
 
         return SigmaConversionResult(elk_query=elk_query, elk_rule_json=elk_rule_json)

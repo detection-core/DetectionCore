@@ -54,8 +54,11 @@ async def process_rule_async(rule_id: str):
 
 async def _stage_convert(rule: DetectionRule) -> DetectionRule:
     from app.services.sigma_converter import convert_sigma_to_elk
+    from app.models.siem_integration import SIEMIntegration
     try:
-        result = convert_sigma_to_elk(rule.sigma_content)
+        siem = await SIEMIntegration.find_one(SIEMIntegration.is_default == True)
+        siem_config = siem.model_dump() if siem else None
+        result = convert_sigma_to_elk(rule.sigma_content, siem_config=siem_config)
         if result.success:
             rule.elk_query = result.elk_query
             rule.elk_rule_json = result.elk_rule_json

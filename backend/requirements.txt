@@ -13,6 +13,7 @@ tenacity>=9.0.0
 # SIGMA conversion  (pySigma 1.x + compatible elasticsearch backend 2.x)
 pySigma==1.2.0
 pySigma-backend-elasticsearch==2.0.2
+pySigma-pipeline-windows>=2.0.0
 pyyaml==6.0.3
 
 # AI providers

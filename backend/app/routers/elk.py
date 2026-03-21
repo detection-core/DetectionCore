@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from app.core.dependencies import get_current_admin
@@ -26,6 +27,25 @@ class UnitTestRunResult(BaseModel):
     passed: bool
     hits: int
     error: Optional[str] = None
+
+
+@router.get("/fields", response_model=ApiResponse[dict])
+async def get_elk_fields(
+    index: str = Query(..., description="Elasticsearch index pattern, e.g. winlogbeat-*"),
+    admin: AdminUser = Depends(get_current_admin),
+):
+    """Discover field names and types from an Elasticsearch index pattern."""
+    from app.services.elk_client import ELKClient
+    client = ELKClient()
+    try:
+        fields = await client.get_field_names(index)
+        msg = f"No fields found for pattern '{index}'" if not fields else "Success"
+        return ApiResponse.ok(data={"index_pattern": index, "fields": fields}, message=msg)
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": f"Elasticsearch unreachable: {e}", "data": None},
+        )
 
 
 @router.get("/status", response_model=ApiResponse[ELKConnectionTest])

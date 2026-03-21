@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query, BackgroundTasks
+import asyncio
+from fastapi import APIRouter, Depends, Query, BackgroundTasks, Request
 from beanie import PydanticObjectId
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.dependencies import get_current_admin
 from app.core.exceptions import NotFoundError
 from app.models.admin_user import AdminUser
@@ -118,6 +119,78 @@ async def list_rules(
     ))
 
 
+async def _run_reconvert_job(app):
+    """Background task: re-convert all rules using current default SIEM config."""
+    import logging
+    logger = logging.getLogger(__name__)
+    from app.services.sigma_converter import convert_sigma_to_elk
+    from app.models.siem_integration import SIEMIntegration
+
+    try:
+        siem = await SIEMIntegration.find_one(SIEMIntegration.is_default == True)
+        siem_config = siem.model_dump() if siem else None
+
+        # Count eligible rules
+        # Skip only rules actively mid-pipeline (race condition risk).
+        # QUEUED = placed in analyst intake queue (final pipeline state) — safe to reconvert.
+        skip_statuses = {PipelineStatus.CONVERTED, PipelineStatus.ENHANCED, PipelineStatus.TESTED}
+        all_rules = await DetectionRule.find(DetectionRule.sigma_content != None).to_list()
+        eligible = [r for r in all_rules if r.sigma_content and r.pipeline_status not in skip_statuses]
+
+        logger.info(f"Reconvert job: {len(eligible)} eligible rules, siem_config base_pipeline={siem_config.get('base_pipeline') if siem_config else None}")
+        app.state.reconvert_job["total"] = len(eligible)
+
+        for rule in eligible:
+            try:
+                result = convert_sigma_to_elk(rule.sigma_content, siem_config=siem_config)
+                if result.success:
+                    rule.elk_query = result.elk_query
+                    rule.elk_rule_json = result.elk_rule_json
+                    rule.updated_at = datetime.now(timezone.utc)
+                    await rule.save()
+                    app.state.reconvert_job["done"] += 1
+                    logger.info(f"Reconvert OK rule {rule.id}: {result.elk_query[:80] if result.elk_query else '(empty)'}")
+                else:
+                    app.state.reconvert_job["errors"] += 1
+                    logger.warning(f"Reconvert failed for rule {rule.id}: {result.error}")
+            except Exception as e:
+                app.state.reconvert_job["errors"] += 1
+                logger.warning(f"Reconvert exception for rule {rule.id}: {e}")
+
+        app.state.reconvert_job["status"] = "done"
+        app.state.reconvert_job["finished_at"] = datetime.now(timezone.utc).isoformat()
+    except Exception as e:
+        logger.error(f"Reconvert job failed: {e}")
+        app.state.reconvert_job["status"] = "error"
+        app.state.reconvert_job["finished_at"] = datetime.now(timezone.utc).isoformat()
+
+
+@router.post("/reconvert-all", response_model=ApiResponse[dict])
+async def reconvert_all(request: Request, admin: AdminUser = Depends(get_current_admin)):
+    """Start async background job to re-convert all rules with current SIEM field mapping."""
+    job = request.app.state.reconvert_job
+    if job.get("status") == "running":
+        return ApiResponse(success=False, message="A reconvert job is already running", data=job)
+
+    now = datetime.now(timezone.utc).isoformat()
+    request.app.state.reconvert_job = {
+        "status": "running",
+        "total": 0,
+        "done": 0,
+        "errors": 0,
+        "started_at": now,
+        "finished_at": None,
+    }
+    asyncio.create_task(_run_reconvert_job(request.app))
+    return ApiResponse.ok(data=request.app.state.reconvert_job, message="Reconvert job started")
+
+
+@router.get("/reconvert-status", response_model=ApiResponse[dict])
+async def reconvert_status(request: Request, admin: AdminUser = Depends(get_current_admin)):
+    """Poll current state of the reconvert background job."""
+    return ApiResponse.ok(data=request.app.state.reconvert_job)
+
+
 @router.get("/{rule_id}", response_model=ApiResponse[RuleDetailOut])
 async def get_rule(rule_id: str, admin: AdminUser = Depends(get_current_admin)):
     """Get full rule details including SIGMA, ELK query, tests, and scoring."""
@@ -161,7 +234,6 @@ async def reprocess_rule(
     admin: AdminUser = Depends(get_current_admin),
 ):
     """Re-run the full pipeline for a rule."""
-    from datetime import timezone
     rule = await DetectionRule.get(PydanticObjectId(rule_id))
     if not rule:
         raise NotFoundError("Rule")

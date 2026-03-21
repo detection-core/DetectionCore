@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -15,7 +15,7 @@ Stack: FastAPI + Beanie ODM (MongoDB) backend, React 18 + TypeScript + Vite fron
 ### Backend
 ```bash
 cd backend
-# Install deps
+# Install deps (includes pySigma-pipeline-windows for ECS field mapping)
 pip install -r requirements.txt
 # Or use the local venv (required — uvicorn runs from here):
 .venv/Scripts/pip install -r requirements.txt
@@ -66,14 +66,15 @@ Non-blocking stages (ENHANCED, TESTED, METADATA) log warnings and continue on fa
 ### Backend
 | File | Role |
 |------|------|
-| `backend/app/main.py` | FastAPI app, lifespan hooks, router registration, APScheduler |
+| `backend/app/main.py` | FastAPI app, lifespan hooks, router registration, APScheduler; initialises `app.state.reconvert_job` |
 | `backend/app/config.py` | Settings via pydantic-settings — loaded once at startup, **server restart required after .env changes** |
 | `backend/app/models/rule.py` | `DetectionRule` document — central data model |
 | `backend/app/models/intake_item.py` | `IntakeItem` — analyst queue, links to `DetectionRule` |
 | `backend/app/models/scoring_config.py` | Scoring weights + org context (industries, regions, assets) |
+| `backend/app/models/siem_integration.py` | `SIEMIntegration` document — SIEM type, base pipeline, custom field mappings; seeded with `Default ELK / ecs_windows` on first startup |
 | `backend/app/services/pipeline_service.py` | Orchestrates all 6 pipeline stages |
-| `backend/app/services/sigma_converter.py` | pySigma conversion; builds Kibana rule JSON; `_ensure_list()` normalises author; `_build_threat_entries()` builds MITRE tactic+technique |
-| `backend/app/services/elk_client.py` | Kibana Detection Engine deployment; normalises `author` (must be array) and `threat[].tactic` (required) at deploy time |
+| `backend/app/services/sigma_converter.py` | pySigma conversion; `_build_processing_pipeline()` builds ECS pipeline from `SIEMIntegration` config; `_ensure_list()` normalises author; `_build_threat_entries()` builds MITRE tactic+technique |
+| `backend/app/services/elk_client.py` | Kibana Detection Engine deployment; `get_field_names()` discovers live fields from ES index pattern; normalises `author` (must be array) and `threat[].tactic` (required) at deploy time |
 | `backend/app/services/ai_provider.py` | Unified LLM interface — provider selected by `DEFAULT_AI_PROVIDER` env var |
 | `backend/app/services/sync_service.py` | Pulls rules from DetectionHub; parses Sigma YAML as fallback for title/tags/logsource when API metadata is empty |
 
@@ -126,6 +127,12 @@ The `anthropic` package must be installed in the **backend `.venv`** (not the gl
 ### Frontend polling (RuleDetail)
 After clicking Reprocess, `RuleDetail.tsx` polls `/rules/{id}` every 2 seconds while `pipeline_status` is `queued`, `converted`, `enhanced`, or `tested`. Polling stops automatically at `scored` or `failed`.
 
+### Reconvert All job (app.state.reconvert_job)
+`POST /api/rules/reconvert-all` starts an async background task via `asyncio.create_task()`. Progress is tracked in `app.state.reconvert_job` (in-memory, resets on restart). The UI polls `GET /api/rules/reconvert-status` every 2 seconds while `status == "running"`. Rules actively mid-pipeline (status `queued`, `converted`, `enhanced`, or `tested`) are skipped. Implemented rules are **not** auto-redeployed to Kibana.
+
+### ecs_windows import path
+`ecs_windows()` is in `sigma.pipelines.elasticsearch.windows` (from `pySigma-backend-elasticsearch`), **not** `sigma.pipelines.windows` (from `pySigma-pipeline-windows`). `pySigma-pipeline-windows` provides `windows_logsource_pipeline` / `windows_audit_pipeline` (logsource/channel mapping, not ECS field mapping).
+
 ---
 
 ## API Route Prefixes
@@ -136,13 +143,16 @@ All backend routes are prefixed `/api` by the FastAPI app:
 |--------|--------|
 | auth | `/api/auth` |
 | rules | `/api/rules` |
+| rules — reconvert | `/api/rules/reconvert-all` (POST), `/api/rules/reconvert-status` (GET) |
 | intake | `/api/intake` |
 | sync | `/api/sync` |
 | log_sources | `/api/log-sources` |
 | elk | `/api/elk` |
+| elk — field discovery | `/api/elk/fields?index=<pattern>` (GET) |
 | scoring | `/api/scoring` |
 | dashboard | `/api/dashboard` |
 | settings | `/api/settings` |
+| settings — SIEM | `/api/settings/siem-integrations` (GET, POST), `/api/settings/siem-integrations/{id}` (GET, PUT) |
 
 ---
 

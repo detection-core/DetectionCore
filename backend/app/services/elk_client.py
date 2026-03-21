@@ -8,6 +8,19 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _flatten_properties(properties: dict, prefix: str, out: list) -> None:
+    """Recursively flatten Elasticsearch mapping properties to dot-notation field list."""
+    for name, field_def in properties.items():
+        if name.startswith("_"):
+            continue
+        full_name = f"{prefix}{name}" if not prefix else f"{prefix}.{name}"
+        field_type = field_def.get("type", "object")
+        out.append({"name": full_name, "type": field_type})
+        nested = field_def.get("properties") or field_def.get("fields") or {}
+        if nested:
+            _flatten_properties(nested, full_name, out)
+
+
 class ELKClient:
     def __init__(
         self,
@@ -146,6 +159,31 @@ class ELKClient:
         except Exception as e:
             logger.error(f"ELK search failed: {e}")
             return {"hits": 0, "error": str(e)}
+        finally:
+            await client.close()
+
+    async def get_field_names(self, index_pattern: str) -> list[dict]:
+        """
+        Return all field names and types from an Elasticsearch index pattern.
+        Recursively flattens nested 'properties' to dot-notation.
+        Returns [] (not an error) when the pattern matches no indices.
+        Raises an exception on connection failure.
+        """
+        client = self._get_client()
+        try:
+            response = await client.indices.get_mapping(index=index_pattern)
+            fields = []
+            for _, index_data in response.items():
+                mappings = index_data.get("mappings", {})
+                _flatten_properties(mappings.get("properties", {}), prefix="", out=fields)
+            # Deduplicate by name (multiple backing indices may share the same fields)
+            seen = set()
+            unique_fields = []
+            for f in fields:
+                if f["name"] not in seen:
+                    seen.add(f["name"])
+                    unique_fields.append(f)
+            return sorted(unique_fields, key=lambda x: x["name"])
         finally:
             await client.close()
 
