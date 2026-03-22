@@ -51,6 +51,7 @@ class RuleSummaryOut(BaseModel):
     log_source_category: Optional[str]
     log_source_product: Optional[str]
     log_source_available: bool
+    log_source_match_type: Optional[str]
     total_score: float
     threat_actors: list[str]
     targeted_industries: list[str]
@@ -298,6 +299,7 @@ def _rule_summary(rule: DetectionRule) -> RuleSummaryOut:
         log_source_category=rule.log_source_category,
         log_source_product=rule.log_source_product,
         log_source_available=rule.log_source_available,
+        log_source_match_type=rule.log_source_match_type,
         total_score=rule.scoring.total_score,
         threat_actors=rule.threat_actors,
         targeted_industries=rule.targeted_industries,

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload, CheckCircle2, XCircle, Trash2 } from "lucide-react";
-import { getLogSources, uploadLogSources, updateLogSource, deleteLogSource } from "@/api/endpoints";
+import { Upload, CheckCircle2, XCircle, Trash2, Sparkles } from "lucide-react";
+import { getLogSources, uploadLogSources, updateLogSource, deleteLogSource, autoDiscoverLogSources, getLogSourceCoverageSummary } from "@/api/endpoints";
 
 export default function LogSources() {
   const qc = useQueryClient();
@@ -17,6 +17,7 @@ export default function LogSources() {
     mutationFn: (file: File) => uploadLogSources(file),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["log-sources"] });
+      qc.invalidateQueries({ queryKey: ["log-source-coverage"] });
       setUploadMsg(`Uploaded: ${res.data.data.inserted} new, ${res.data.data.updated} updated`);
       setTimeout(() => setUploadMsg(null), 5000);
     },
@@ -25,12 +26,33 @@ export default function LogSources() {
   const toggleMut = useMutation({
     mutationFn: ({ id, val }: { id: string; val: boolean }) =>
       updateLogSource(id, { is_available: val }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["log-sources"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["log-sources"] });
+      qc.invalidateQueries({ queryKey: ["log-source-coverage"] });
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteLogSource(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["log-sources"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["log-sources"] });
+      qc.invalidateQueries({ queryKey: ["log-source-coverage"] });
+    },
+  });
+
+  const discoverMut = useMutation({
+    mutationFn: () => autoDiscoverLogSources(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["log-sources"] });
+      qc.invalidateQueries({ queryKey: ["log-source-coverage"] });
+      setUploadMsg(`Discovered: ${res.data.data.inserted} new, ${res.data.data.skipped} existing (${res.data.data.total_unique} total unique)`);
+      setTimeout(() => setUploadMsg(null), 5000);
+    },
+  });
+
+  const { data: coverage } = useQuery({
+    queryKey: ["log-source-coverage"],
+    queryFn: () => getLogSourceCoverageSummary().then((r) => r.data.data),
   });
 
   const available = (sources ?? []).filter((s: { is_available: boolean }) => s.is_available).length;
@@ -56,6 +78,14 @@ export default function LogSources() {
             }}
           />
           <button
+            onClick={() => discoverMut.mutate()}
+            disabled={discoverMut.isPending}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-secondary text-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
+          >
+            <Sparkles className="w-4 h-4" />
+            {discoverMut.isPending ? "Discovering..." : "Auto-Discover from Rules"}
+          </button>
+          <button
             onClick={() => fileRef.current?.click()}
             className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
@@ -68,6 +98,24 @@ export default function LogSources() {
       {uploadMsg && (
         <div className="px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/20 text-sm text-green-400">
           {uploadMsg}
+        </div>
+      )}
+
+      {/* Coverage Summary Banner */}
+      {coverage && coverage.total_unique_in_rules > 0 && (
+        <div className="grid grid-cols-5 gap-3">
+          {[
+            { label: "Total Rule Sources", value: coverage.total_unique_in_rules, color: "text-foreground" },
+            { label: "Exact Match", value: coverage.exact_matches, color: "text-green-400" },
+            { label: "Partial Match", value: coverage.partial_matches, color: "text-amber-400" },
+            { label: "Product Match", value: coverage.product_matches, color: "text-amber-400" },
+            { label: "Unmatched", value: coverage.unmatched, color: "text-red-400" },
+          ].map((s) => (
+            <div key={s.label} className="px-4 py-3 rounded-lg bg-card border border-border text-center">
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-muted-foreground">{s.label}</p>
+            </div>
+          ))}
         </div>
       )}
 

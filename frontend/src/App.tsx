@@ -9,6 +9,8 @@ import LogSources from "@/pages/LogSources";
 import Sync from "@/pages/Sync";
 import ElkPage from "@/pages/ElkPage";
 import Settings from "@/pages/Settings";
+import MitreHeatmap from "@/pages/MitreHeatmap";
+import DetectionReport from "@/pages/DetectionReport";
 
 export default function App() {
   return (
@@ -22,6 +24,8 @@ export default function App() {
         <Route path="/log-sources" element={<LogSources />} />
         <Route path="/sync" element={<Sync />} />
         <Route path="/elk" element={<ElkPage />} />
+        <Route path="/mitre" element={<MitreHeatmap />} />
+        <Route path="/report" element={<DetectionReport />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

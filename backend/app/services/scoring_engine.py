@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timezone
 from app.models.rule import DetectionRule, ScoringResult, Severity
 from app.models.scoring_config import ScoringConfig
-from app.models.log_source import LogSource
 
 logger = logging.getLogger(__name__)
 
@@ -75,22 +74,26 @@ async def score_rule(rule: DetectionRule) -> ScoringResult:
 
 
 async def _score_log_availability(rule: DetectionRule) -> float:
-    """Check if the required log source is available in the client's ELK."""
+    """Score based on cached log source match type and availability (set by _refresh_rule_log_availability)."""
     if not rule.log_source_category and not rule.log_source_product:
-        return 50.0  # Unknown — neutral score
+        return 50.0  # No log source fields — neutral
 
-    filters = []
-    if rule.log_source_category:
-        filters.append(LogSource.category == rule.log_source_category)
-    if rule.log_source_product:
-        filters.append(LogSource.product == rule.log_source_product)
+    if not rule.log_source_match_type:
+        return 50.0  # No match computed yet — neutral
 
-    log_source = await LogSource.find_one(LogSource.is_available == True, *filters)
-    if log_source:
-        return 100.0
-    # Check if it exists but is marked unavailable
-    any_source = await LogSource.find_one(*filters)
-    return 0.0 if any_source else 50.0
+    if not rule.log_source_available:
+        return 0.0  # Matched but source is unavailable
+
+    # Available — graduated score by match confidence
+    match rule.log_source_match_type:
+        case "exact":
+            return 100.0
+        case "partial":
+            return 90.0
+        case "product":
+            return 70.0
+        case _:
+            return 50.0
 
 
 def _score_industry(rule: DetectionRule, config: ScoringConfig) -> float:

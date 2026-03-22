@@ -9,6 +9,8 @@ import {
   Zap,
   LogOut,
   Activity,
+  Grid3X3,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -20,6 +22,8 @@ const navItems = [
   { to: "/log-sources", icon: Database, label: "Log Sources" },
   { to: "/sync", icon: RefreshCw, label: "Sync Status" },
   { to: "/elk", icon: Zap, label: "ELK" },
+  { to: "/mitre", icon: Grid3X3, label: "MITRE Coverage" },
+  { to: "/report", icon: FileText, label: "Detection Report" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 

@@ -16,6 +16,8 @@ export const getSeverityDistribution = () => api.get("/dashboard/severity-distri
 export const getMitreCoverage = () => api.get("/dashboard/mitre-coverage");
 export const getLogSourceGaps = () => api.get("/dashboard/log-source-gaps");
 export const getScoreDistribution = () => api.get("/dashboard/score-distribution");
+export const getMitreMatrix = () => api.get("/dashboard/mitre-matrix");
+export const getDetectionReport = () => api.get("/dashboard/detection-report");
 
 // Rules
 export const getRules = (params?: Record<string, unknown>) => api.get("/rules", { params });
@@ -45,6 +47,8 @@ export const uploadLogSources = (file: File) => {
 };
 export const updateLogSource = (id: string, data: Record<string, unknown>) => api.put(`/log-sources/${id}`, data);
 export const deleteLogSource = (id: string) => api.delete(`/log-sources/${id}`);
+export const autoDiscoverLogSources = () => api.post("/log-sources/auto-discover");
+export const getLogSourceCoverageSummary = () => api.get("/log-sources/coverage-summary");
 
 // ELK
 export const getElkStatus = () => api.get("/elk/status");

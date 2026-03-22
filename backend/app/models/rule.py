@@ -96,6 +96,7 @@ class DetectionRule(Document):
     log_source_product: Optional[str] = None
     log_source_service: Optional[str] = None
     log_source_available: bool = False  # Resolved against uploaded log sources
+    log_source_match_type: Optional[str] = None  # "exact", "partial", "product", or None
 
     # Threat context (from DetectionHub)
     threat_actors: list[str] = []

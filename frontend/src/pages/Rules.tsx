@@ -115,7 +115,8 @@ export default function Rules() {
               rules.map((rule: {
                 id: string; title: string; severity: string; pipeline_status: string;
                 total_score: number; log_source_product?: string; log_source_category?: string;
-                log_source_available: boolean; mitre_technique_ids: string[]; synced_at: string;
+                log_source_available: boolean; log_source_match_type?: string;
+                mitre_technique_ids: string[]; synced_at: string;
               }) => (
                 <tr
                   key={rule.id}
@@ -139,8 +140,15 @@ export default function Rules() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-mono ${rule.log_source_available ? "text-green-400" : "text-red-400"}`}>
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono ${
+                      rule.log_source_match_type === "exact" ? "bg-green-500/15 text-green-400" :
+                      rule.log_source_match_type === "partial" || rule.log_source_match_type === "product" ? "bg-amber-500/15 text-amber-400" :
+                      "bg-red-500/15 text-red-400"
+                    }`}>
                       {rule.log_source_category}/{rule.log_source_product ?? "?"}
+                      {rule.log_source_match_type && (
+                        <span className="text-[10px] opacity-70">({rule.log_source_match_type})</span>
+                      )}
                     </span>
                   </td>
                   <td className="px-4 py-3">
