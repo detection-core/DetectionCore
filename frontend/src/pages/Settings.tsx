@@ -74,6 +74,35 @@ function logsourceRowsToObj(rows: LoosourceRow[]): Record<string, Record<string,
   return out;
 }
 
+// ── Shared UI components ───────────────────────────────────────────────────
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card rounded-xl border border-border p-5 space-y-4">
+      <h2 className="font-semibold text-foreground border-b border-border pb-2">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, type = "text", placeholder = "", value, onChange }: {
+  label: string; type?: string; placeholder?: string;
+  value: string | number; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs font-medium text-muted-foreground uppercase">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 text-sm rounded-lg bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+      />
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -104,6 +133,16 @@ export default function Settings() {
   const recalcMut = useMutation({ mutationFn: recalculateScores });
   const [form, setForm] = useState<Record<string, string | number | boolean | string[]>>({});
   const val = (key: string) => form[key] ?? config?.[key] ?? "";
+
+  // Raw text state for comma-list fields so spaces can be typed freely
+  const [regionsText, setRegionsText] = useState("");
+  const [watchlistText, setWatchlistText] = useState("");
+  useEffect(() => {
+    if (config) {
+      setRegionsText((config.client_regions as string[] | undefined ?? []).join(", "));
+      setWatchlistText((config.threat_actor_watchlist as string[] | undefined ?? []).join(", "));
+    }
+  }, [config]);
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateMut.mutate(form as Record<string, unknown>);
@@ -212,31 +251,7 @@ export default function Settings() {
     }
   };
 
-  // ── Shared UI components ───────────────────────────────────────────────────
-
   if (isLoading) return <div className="p-6 text-muted-foreground">Loading...</div>;
-
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="bg-card rounded-xl border border-border p-5 space-y-4">
-      <h2 className="font-semibold text-foreground border-b border-border pb-2">{title}</h2>
-      {children}
-    </div>
-  );
-
-  const Field = ({ label, name, type = "text", placeholder = "" }: {
-    label: string; name: string; type?: string; placeholder?: string;
-  }) => (
-    <div className="space-y-1">
-      <label className="text-xs font-medium text-muted-foreground uppercase">{label}</label>
-      <input
-        type={type}
-        value={val(name) as string | number}
-        onChange={(e) => setForm((f) => ({ ...f, [name]: type === "number" ? Number(e.target.value) : e.target.value }))}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 text-sm rounded-lg bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-      />
-    </div>
-  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -275,14 +290,15 @@ export default function Settings() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Client Context */}
           <Section title="Client Context">
-            <Field label="Client Name" name="client_name" placeholder="Acme Corp" />
-            <Field label="Industry" name="client_industry" placeholder="Financial Services" />
+            <Field label="Client Name" placeholder="Acme Corp" value={val("client_name") as string} onChange={(e) => setForm((f) => ({ ...f, client_name: e.target.value }))} />
+            <Field label="Industry" placeholder="Financial Services" value={val("client_industry") as string} onChange={(e) => setForm((f) => ({ ...f, client_industry: e.target.value }))} />
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground uppercase">Regions (comma-separated)</label>
               <input
                 type="text"
-                value={(val("client_regions") as string[] | string[]).toString()}
-                onChange={(e) => setForm((f) => ({
+                value={regionsText}
+                onChange={(e) => setRegionsText(e.target.value)}
+                onBlur={(e) => setForm((f) => ({
                   ...f, client_regions: e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
                 }))}
                 placeholder="US, EU, Middle East"
@@ -293,8 +309,9 @@ export default function Settings() {
               <label className="text-xs font-medium text-muted-foreground uppercase">Threat Actor Watchlist (comma-separated)</label>
               <input
                 type="text"
-                value={(val("threat_actor_watchlist") as string[] | string[]).toString()}
-                onChange={(e) => setForm((f) => ({
+                value={watchlistText}
+                onChange={(e) => setWatchlistText(e.target.value)}
+                onBlur={(e) => setForm((f) => ({
                   ...f, threat_actor_watchlist: e.target.value.split(",").map((s) => s.trim()).filter(Boolean)
                 }))}
                 placeholder="APT28, Lazarus Group, MuddyWater"
@@ -305,7 +322,7 @@ export default function Settings() {
 
           {/* DetectionHub */}
           <Section title="DetectionHub Connection">
-            <Field label="Base URL" name="detectionhub_base_url" placeholder="https://detectionhub.ai" />
+            <Field label="Base URL" placeholder="https://detectionhub.ai" value={val("detectionhub_base_url") as string} onChange={(e) => setForm((f) => ({ ...f, detectionhub_base_url: e.target.value }))} />
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground uppercase">API Key</label>
               <input
@@ -323,8 +340,8 @@ export default function Settings() {
           {/* ELK */}
           <Section title="ELK Connection">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Host" name="elk_host" placeholder="elasticsearch" />
-              <Field label="Port" name="elk_port" type="number" placeholder="9200" />
+              <Field label="Host" placeholder="elasticsearch" value={val("elk_host") as string} onChange={(e) => setForm((f) => ({ ...f, elk_host: e.target.value }))} />
+              <Field label="Port" type="number" placeholder="9200" value={val("elk_port") as number} onChange={(e) => setForm((f) => ({ ...f, elk_port: Number(e.target.value) }))} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground uppercase">API Key</label>
@@ -336,7 +353,7 @@ export default function Settings() {
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Username" name="elk_username" placeholder="elastic" />
+              <Field label="Username" placeholder="elastic" value={val("elk_username") as string} onChange={(e) => setForm((f) => ({ ...f, elk_username: e.target.value }))} />
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground uppercase">Password</label>
                 <input type="password" onChange={(e) => setForm((f) => ({ ...f, elk_password: e.target.value }))}
@@ -359,7 +376,7 @@ export default function Settings() {
                 <option value="openrouter">OpenRouter</option>
               </select>
             </div>
-            <Field label="Model" name="ai_model" placeholder="gemini-2.0-flash" />
+            <Field label="Model" placeholder="gemini-2.0-flash" value={val("ai_model") as string} onChange={(e) => setForm((f) => ({ ...f, ai_model: e.target.value }))} />
           </Section>
 
           {/* Scoring Weights */}
@@ -389,7 +406,7 @@ export default function Settings() {
 
           {/* Sync */}
           <Section title="Sync Schedule">
-            <Field label="Cron Expression" name="sync_cron" placeholder="0 6 * * *" />
+            <Field label="Cron Expression" placeholder="0 6 * * *" value={val("sync_cron") as string} onChange={(e) => setForm((f) => ({ ...f, sync_cron: e.target.value }))} />
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"

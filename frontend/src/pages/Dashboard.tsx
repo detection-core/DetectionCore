@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
   ShieldCheck, AlertTriangle, CheckCircle2, Layers,
@@ -86,6 +85,7 @@ export default function Dashboard() {
   const { data: logGaps } = useQuery({
     queryKey: ["log-gaps"],
     queryFn: () => getLogSourceGaps().then((r) => r.data.data),
+    refetchInterval: 30_000,
   });
 
   const s = summary ?? {};
@@ -157,28 +157,25 @@ export default function Dashboard() {
         <div className="bg-card rounded-xl border border-border p-5">
           <h2 className="font-semibold text-foreground mb-4">Severity Distribution</h2>
           <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={severityDist ?? []}
-                dataKey="count"
-                nameKey="severity"
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                label={({ severity, percent }) =>
-                  `${severity} ${(percent * 100).toFixed(0)}%`
-                }
-                labelLine={false}
-              >
+            <BarChart data={severityDist ?? []} layout="vertical">
+              <XAxis type="number" tick={{ fill: "#6b7280", fontSize: 11 }} allowDecimals={false} />
+              <YAxis
+                dataKey="severity"
+                type="category"
+                tick={{ fill: "#9ca3af", fontSize: 11 }}
+                width={90}
+                tickFormatter={(v: string) => v.charAt(0).toUpperCase() + v.slice(1)}
+              />
+              <Tooltip
+                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
+                labelStyle={{ color: "#e2e8f0", textTransform: "capitalize" }}
+              />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {(severityDist ?? []).map((entry: { severity: string }) => (
                   <Cell key={entry.severity} fill={SEVERITY_COLORS[entry.severity] ?? "#64748b"} />
                 ))}
-              </Pie>
-              <Legend formatter={(v) => <span className="text-xs text-muted-foreground capitalize">{v}</span>} />
-              <Tooltip
-                contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8 }}
-              />
-            </PieChart>
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
